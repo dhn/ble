@@ -1,12 +1,14 @@
 /*
- * $Id: ble.c,v 1.1 2014/11/07 17:34:59 dhn Exp $
- * gcc -std=c99 -o ble ble.c -lbluetooth
+ * $Id: ble.c,v 1.2 2014/11/07 23:25:11 dhn Exp $
+ * gcc -std=c99 -o ble ble.c -lbluetooth -lm
 */
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <errno.h>
 #include <unistd.h>
 #include <sys/socket.h>
+
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
@@ -116,9 +118,60 @@ static void disconnect_from_device(int dev_id, uint16_t handle)
     hci_close_dev(dd);
 }
 
+static int read_rssi(int dev_id, uint16_t handle)
+{
+    bdaddr_t bdaddr;
+    int8_t rssi;
+    int dd;
+
+    if (BADDR)
+        str2ba(BADDR, &bdaddr);
+
+    dd = hci_open_dev(dev_id);
+    if (dd < 0) {
+        perror("Could not open device");
+        exit(1);
+    }
+
+    if (hci_read_rssi(dd, handle, &rssi, 1000) < 0) {
+        perror("Read RSSI failed");
+        exit(1);
+    }
+
+    printf("RSSI return value: %d\n", rssi);
+
+    hci_close_dev(dd);
+    
+    return rssi;
+}
+
+/*
+ *  Calculated the estimated distance in meters to the beacon based on a
+ *  reference rssi at 1m and the known actual rssi at the current location 
+*/
+static double calculate_distance(int rssi)
+{
+    double ratio = rssi*1.0/-58.0; /* txPower: -58 for blueIOT */
+
+    if (rssi == 0) {
+        return -1.0;
+    }
+
+    if (ratio < 1.0) {
+        return pow(ratio, 10);
+    } else {
+        /*
+         * FIXME: value1 = 0.42093, value2 = 6.9476, value3 = 0.54992
+         *        value1 = 0.89976, value2 = 7.7095, value3 = 0.111
+         *        value1 = 0.42093, value2 = 6.9476, value3 = 0.34992
+        */
+        return (0.42093)*pow(ratio, 6.9476) + 0.34992;
+    }
+}
+
 int main(void)
 {
-    int dev_id = -1;
+    int rssi, dev_id = -1;
     uint16_t handle;
 
     dev_id = hci_devid(DEV_ID);
@@ -128,7 +181,15 @@ int main(void)
     } else {
         add_to_white_list(dev_id);
         handle = connect_to_device(dev_id);
-        sleep(10); /* DEBUG */
+
+        /* DEBUG */
+        for(int i=0; i<10; i++) {
+            sleep(1);
+            rssi = read_rssi(dev_id, handle);
+            printf("Distance: approximate %f\n", calculate_distance(rssi));
+            sleep(1);
+        }
+
         disconnect_from_device(dev_id, handle);
     }
 }
