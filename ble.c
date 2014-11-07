@@ -14,7 +14,7 @@
 #include <bluetooth/hci_lib.h>
 
 #define DEV_ID  "hci0"
-#define BDADDR   "00:07:80:7F:59:9E"
+#define BDADDR  "00:07:80:7F:59:9E"
 
 static void add_to_white_list(int dev_id)
 {
