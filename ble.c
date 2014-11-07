@@ -1,5 +1,5 @@
 /*
- * $Id: ble.c,v 1.2 2014/11/07 23:25:11 dhn Exp $
+ * $Id: ble.c,v 1.3 2014/11/07 23:47:10 dhn Exp $
  * gcc -std=c99 -o ble ble.c -lbluetooth -lm
 */
 #include <stdio.h>
@@ -14,7 +14,7 @@
 #include <bluetooth/hci_lib.h>
 
 #define DEV_ID  "hci0"
-#define BADDR   "00:07:80:7F:59:9E"
+#define BDADDR   "00:07:80:7F:59:9E"
 
 static void add_to_white_list(int dev_id)
 {
@@ -31,8 +31,8 @@ static void add_to_white_list(int dev_id)
         exit(1);
     }
 
-    if (BADDR)
-        str2ba(BADDR, &bdaddr);
+    if (BDADDR)
+        str2ba(BDADDR, &bdaddr);
 
     err = hci_le_add_white_list(dd, &bdaddr, bdaddr_type, 1000);
     hci_close_dev(dd);
@@ -66,8 +66,8 @@ static uint16_t connect_to_device(int dev_id)
     }
 
     memset(&bdaddr, 0, sizeof(bdaddr_t));
-    if (BADDR)
-        str2ba(BADDR, &bdaddr);
+    if (BDADDR)
+        str2ba(BDADDR, &bdaddr);
 
     interval = htobs(0x0004);
     window = htobs(0x0004);
@@ -89,7 +89,7 @@ static uint16_t connect_to_device(int dev_id)
         exit(1);
     }
 
-    printf("Connect to %s - handle %d\n", BADDR, handle);
+    printf("Connect to %s - handle %d\n", BDADDR, handle);
     hci_close_dev(dd);
 
     return handle;
@@ -124,8 +124,8 @@ static int read_rssi(int dev_id, uint16_t handle)
     int8_t rssi;
     int dd;
 
-    if (BADDR)
-        str2ba(BADDR, &bdaddr);
+    if (BDADDR)
+        str2ba(BDADDR, &bdaddr);
 
     dd = hci_open_dev(dev_id);
     if (dd < 0) {
