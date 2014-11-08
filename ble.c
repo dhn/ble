@@ -24,8 +24,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: ble.c,v 1.4 2014/11/08 12:05:53 dhn Exp $
- * gcc -std=c99 -o ble ble.c -lbluetooth -lm
+ * $Id: ble.c,v 1.5 2014/11/08 20:54:52 dhn Exp $
+ *
 */
 #include <math.h>
 #include <errno.h>
@@ -134,7 +134,6 @@ void
 disconnect_from_device(int dev_id, uint16_t handle)
 {
     int err, dd;
-    uint8_t reason;
 
     if (dev_id < 0)
         dev_id = hci_get_route(NULL);
