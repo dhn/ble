@@ -1,5 +1,5 @@
 /*
- * $Id: ble.c,v 1.3 2014/11/07 23:47:10 dhn Exp $
+ * $Id: ble.c,v 1.4 2014/11/08 12:05:53 dhn Exp $
  * gcc -std=c99 -o ble ble.c -lbluetooth -lm
 */
 #include <stdio.h>
@@ -13,7 +13,7 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 
-#define DEV_ID  "hci0"
+#define DEV_ID  "hci1"
 #define BDADDR  "00:07:80:7F:59:9E"
 
 static void add_to_white_list(int dev_id)
@@ -118,6 +118,35 @@ static void disconnect_from_device(int dev_id, uint16_t handle)
     hci_close_dev(dd);
 }
 
+static void check_version(int dev_id) {
+    struct hci_version ver;
+    char *lmpver;
+    int dd;
+
+    dd = hci_open_dev(dev_id);
+    if (dd < 0) {
+        perror("Could not open device");
+        exit(1);
+    }
+
+    if (hci_read_local_version(dd, &ver, 1000) < 0) {
+        perror("Can't read version info hci0");
+        exit(1);
+    }
+
+    lmpver = lmp_vertostr(ver.lmp_ver);
+
+    if (strcmp(lmpver, "4.0")) {
+        printf("You need a Bluetooth 4.0 LE device\n");
+        bt_free(lmpver);
+        exit(1);
+    } else {
+        bt_free(lmpver);
+    }
+
+    hci_close_dev(dd);
+}
+
 static int read_rssi(int dev_id, uint16_t handle)
 {
     bdaddr_t bdaddr;
@@ -138,7 +167,7 @@ static int read_rssi(int dev_id, uint16_t handle)
         exit(1);
     }
 
-    printf("RSSI return value: %d\n", rssi);
+    /* printf("RSSI return value: %d\n", rssi); */
 
     hci_close_dev(dd);
     
@@ -165,7 +194,7 @@ static double calculate_distance(int rssi)
          *        value1 = 0.89976, value2 = 7.7095, value3 = 0.111
          *        value1 = 0.42093, value2 = 6.9476, value3 = 0.34992
         */
-        return (0.42093)*pow(ratio, 6.9476) + 0.34992;
+        return (0.22093)*pow(ratio, 6.9476) + 0.2344;
     }
 }
 
@@ -179,6 +208,7 @@ int main(void)
         perror("Invalid device");
         exit(1);
     } else {
+        check_version(dev_id);
         add_to_white_list(dev_id);
         handle = connect_to_device(dev_id);
 
