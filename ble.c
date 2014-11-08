@@ -1,11 +1,36 @@
 /*
+ * Copyright (c) 2014, Dennis 'dhn' Herrmann <dhn@4bit.ws>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the names of the company nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY <Dennis 'dhn' Herrmann> ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL <Dennis 'dhn' Herrmann> BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
  * $Id: ble.c,v 1.4 2014/11/08 12:05:53 dhn Exp $
  * gcc -std=c99 -o ble ble.c -lbluetooth -lm
 */
-#include <stdio.h>
-#include <stdlib.h>
 #include <math.h>
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/socket.h>
 
@@ -16,7 +41,16 @@
 #define DEV_ID  "hci1"
 #define BDADDR  "00:07:80:7F:59:9E"
 
-static void add_to_white_list(int dev_id)
+/* function declarations */
+static void add_to_white_list(int dev_id);
+static uint16_t connect_to_device(int dev_id);
+static void disconnect_from_device(int dev_id, uint16_t handle);
+static void check_version(int dev_id);
+static int read_rssi(int dev_id, uint16_t handle);
+static double calculate_distance(int rssi);
+
+void
+add_to_white_list(int dev_id)
 {
     int err, dd;
     bdaddr_t bdaddr;
@@ -45,7 +79,8 @@ static void add_to_white_list(int dev_id)
     }
 }
 
-static uint16_t connect_to_device(int dev_id)
+uint16_t
+connect_to_device(int dev_id)
 {
     int err, dd;
     bdaddr_t bdaddr;
@@ -95,7 +130,8 @@ static uint16_t connect_to_device(int dev_id)
     return handle;
 }
 
-static void disconnect_from_device(int dev_id, uint16_t handle)
+void
+disconnect_from_device(int dev_id, uint16_t handle)
 {
     int err, dd;
     uint8_t reason;
@@ -118,7 +154,9 @@ static void disconnect_from_device(int dev_id, uint16_t handle)
     hci_close_dev(dd);
 }
 
-static void check_version(int dev_id) {
+void
+check_version(int dev_id)
+{
     struct hci_version ver;
     char *lmpver;
     int dd;
@@ -147,7 +185,8 @@ static void check_version(int dev_id) {
     hci_close_dev(dd);
 }
 
-static int read_rssi(int dev_id, uint16_t handle)
+int
+read_rssi(int dev_id, uint16_t handle)
 {
     bdaddr_t bdaddr;
     int8_t rssi;
@@ -178,13 +217,13 @@ static int read_rssi(int dev_id, uint16_t handle)
  *  Calculated the estimated distance in meters to the beacon based on a
  *  reference rssi at 1m and the known actual rssi at the current location 
 */
-static double calculate_distance(int rssi)
+double
+calculate_distance(int rssi)
 {
     double ratio = rssi*1.0/-58.0; /* txPower: -58 for blueIOT */
 
-    if (rssi == 0) {
+    if (rssi == 0)
         return -1.0;
-    }
 
     if (ratio < 1.0) {
         return pow(ratio, 10);
@@ -198,7 +237,8 @@ static double calculate_distance(int rssi)
     }
 }
 
-int main(void)
+int
+main(void)
 {
     int rssi, dev_id = -1;
     uint16_t handle;
@@ -222,4 +262,5 @@ int main(void)
 
         disconnect_from_device(dev_id, handle);
     }
+    return EXIT_SUCCESS;
 }
