@@ -93,7 +93,7 @@ connect_to_device(int dev_id)
 
     initiator_filter = 0x01; /* Use white list */
 
-    if (dev_id <0)
+    if (dev_id < 0)
         dev_id = hci_get_route(NULL);
 
     if ((typ.dd = hci_open_dev(dev_id)) < 0) {
