@@ -24,8 +24,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: ble.c,v 1.5 2014/11/08 20:54:52 dhn Exp $
- *
+ * $Id: ble.c,v 1.6 2014/11/14 00:20:44 dhn Exp $
 */
 #include <math.h>
 #include <errno.h>
@@ -41,26 +40,33 @@
 #define DEV_ID  "hci1"
 #define BDADDR  "00:07:80:7F:59:9E"
 
+/* typedefs */
+typedef struct {
+    int dd;
+    int err;
+} hci_typ;
+
 /* function declarations */
 static void add_to_white_list(int dev_id);
 static uint16_t connect_to_device(int dev_id);
 static void disconnect_from_device(int dev_id, uint16_t handle);
+static void encryption(int dev_id, uint16_t handle);
 static void check_version(int dev_id);
 static int read_rssi(int dev_id, uint16_t handle);
 static double calculate_distance(int rssi);
 
+/* variables */
+static hci_typ typ;
+static bdaddr_t bdaddr;
+static uint8_t bdaddr_type = LE_PUBLIC_ADDRESS;
+
 void
 add_to_white_list(int dev_id)
 {
-    int err, dd;
-    bdaddr_t bdaddr;
-    uint8_t bdaddr_type = LE_PUBLIC_ADDRESS;
-
     if (dev_id < 0)
         dev_id = hci_get_route(NULL);
 
-    dd = hci_open_dev(dev_id);
-    if (dd < 0) {
+    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
         perror("Could not open device");
         exit(1);
     }
@@ -68,13 +74,12 @@ add_to_white_list(int dev_id)
     if (BDADDR)
         str2ba(BDADDR, &bdaddr);
 
-    err = hci_le_add_white_list(dd, &bdaddr, bdaddr_type, 1000);
-    hci_close_dev(dd);
+    typ.err = hci_le_add_white_list(typ.dd, &bdaddr, bdaddr_type, 1000);
+    hci_close_dev(typ.dd);
 
-    if (err < 0) {
-        err = -errno;
-        fprintf(stderr, "Can't add to white list: %s(%d)\n",
-                strerror(-err), -err);
+    if (typ.err < 0) {
+        typ.err = -errno;
+        printf("Can't add to white list!\n");
         exit(1);
     }
 }
@@ -82,20 +87,16 @@ add_to_white_list(int dev_id)
 uint16_t
 connect_to_device(int dev_id)
 {
-    int err, dd;
-    bdaddr_t bdaddr;
     uint16_t interval, latency, max_ce_length, max_interval, min_ce_length;
     uint16_t min_interval, supervision_timeout, window, handle;
-    uint8_t initiator_filter, own_bdaddr_type, peer_bdaddr_type;
+    uint8_t initiator_filter, own_bdaddr_type;
 
-    peer_bdaddr_type = LE_PUBLIC_ADDRESS;
     initiator_filter = 0x01; /* Use white list */
 
     if (dev_id <0)
         dev_id = hci_get_route(NULL);
 
-    dd = hci_open_dev(dev_id);
-    if (dd < 0) {
+    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
         perror("Could not open device");
         exit(1);
     }
@@ -114,18 +115,17 @@ connect_to_device(int dev_id)
     min_ce_length = htobs(0x0001);
     max_ce_length = htobs(0x0001);
 
-    err = hci_le_create_conn(dd, interval, window, initiator_filter,
-            peer_bdaddr_type, bdaddr, own_bdaddr_type, min_interval,
+    typ.err = hci_le_create_conn(typ.dd, interval, window, initiator_filter,
+            bdaddr_type, bdaddr, own_bdaddr_type, min_interval,
             max_interval, latency, supervision_timeout,
             min_ce_length, max_ce_length, &handle, 25000);
 
-    if (err < 0) {
+    if (typ.err < 0) {
         perror("Could not create connection");
         exit(1);
     }
 
-    printf("Connect to %s - handle %d\n", BDADDR, handle);
-    hci_close_dev(dd);
+    hci_close_dev(typ.dd);
 
     return handle;
 }
@@ -133,24 +133,40 @@ connect_to_device(int dev_id)
 void
 disconnect_from_device(int dev_id, uint16_t handle)
 {
-    int err, dd;
-
     if (dev_id < 0)
         dev_id = hci_get_route(NULL);
 
-    dd = hci_open_dev(dev_id);
-    if (dd < 0) {
+    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
         perror("Could not open device");
         exit(1);
     }
 
-    err = hci_disconnect(dd, handle, HCI_OE_USER_ENDED_CONNECTION, 10000);
-    if (err < 0) {
+    typ.err = hci_disconnect(typ.dd, handle, HCI_OE_USER_ENDED_CONNECTION, 10000);
+    if (typ.err < 0) {
         perror("Could not disconnect");
         exit(1);
     }
 
-    hci_close_dev(dd);
+    hci_close_dev(typ.dd);
+}
+
+void
+encryption(int dev_id, uint16_t handle)
+{
+    if (BDADDR)
+        str2ba(BDADDR, &bdaddr);
+    
+    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
+        perror("Could not open device");
+        exit(1);
+    }
+
+    if (hci_encrypt_link(typ.dd, handle, 1, 25000) < 0) {
+        perror("HCI set encryption request failed");
+        exit(1);
+    }
+
+    hci_close_dev(typ.dd);
 }
 
 void
@@ -158,15 +174,13 @@ check_version(int dev_id)
 {
     struct hci_version ver;
     char *lmpver;
-    int dd;
 
-    dd = hci_open_dev(dev_id);
-    if (dd < 0) {
+    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
         perror("Could not open device");
         exit(1);
     }
 
-    if (hci_read_local_version(dd, &ver, 1000) < 0) {
+    if (hci_read_local_version(typ.dd, &ver, 1000) < 0) {
         perror("Can't read version info hci0");
         exit(1);
     }
@@ -181,33 +195,28 @@ check_version(int dev_id)
         bt_free(lmpver);
     }
 
-    hci_close_dev(dd);
+    hci_close_dev(typ.dd);
 }
 
 int
 read_rssi(int dev_id, uint16_t handle)
 {
-    bdaddr_t bdaddr;
     int8_t rssi;
-    int dd;
 
     if (BDADDR)
         str2ba(BDADDR, &bdaddr);
 
-    dd = hci_open_dev(dev_id);
-    if (dd < 0) {
+    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
         perror("Could not open device");
         exit(1);
     }
 
-    if (hci_read_rssi(dd, handle, &rssi, 1000) < 0) {
+    if (hci_read_rssi(typ.dd, handle, &rssi, 1000) < 0) {
         perror("Read RSSI failed");
         exit(1);
     }
 
-    /* printf("RSSI return value: %d\n", rssi); */
-
-    hci_close_dev(dd);
+    hci_close_dev(typ.dd);
     
     return rssi;
 }
@@ -232,6 +241,7 @@ calculate_distance(int rssi)
          *        value1 = 0.89976, value2 = 7.7095, value3 = 0.111
          *        value1 = 0.42093, value2 = 6.9476, value3 = 0.34992
         */
+        /* return (0.42093)*pow(ratio, 6.9476) + 0.54992; */
         return (0.22093)*pow(ratio, 6.9476) + 0.2344;
     }
 }
@@ -250,13 +260,13 @@ main(void)
         check_version(dev_id);
         add_to_white_list(dev_id);
         handle = connect_to_device(dev_id);
+        /* encryption(dev_id, handle); */
 
         /* DEBUG */
-        for(int i=0; i<10; i++) {
+        for(int i=0; i<5; i++) {
             sleep(1);
             rssi = read_rssi(dev_id, handle);
-            printf("Distance: approximate %f\n", calculate_distance(rssi));
-            sleep(1);
+            printf("%d\t%f\n", rssi, calculate_distance(rssi));
         }
 
         disconnect_from_device(dev_id, handle);
