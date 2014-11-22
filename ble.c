@@ -270,83 +270,83 @@ calculate_distance(int rssi)
 void
 die(const char *errstr, ...)
 {
-	va_list ap;
+    va_list ap;
 
-	va_start(ap, errstr);
-	vfprintf(stderr, errstr, ap);
-	va_end(ap);
-	exit(EXIT_FAILURE);
+    va_start(ap, errstr);
+    vfprintf(stderr, errstr, ap);
+    va_end(ap);
+    exit(EXIT_FAILURE);
 }
 
 void
 unlockscreen(Display *dpy, Lock *lock)
 {
-	if(dpy == NULL || lock == NULL)
-		return;
+    if(dpy == NULL || lock == NULL)
+        return;
 
-	XUngrabPointer(dpy, CurrentTime);
-	XFreePixmap(dpy, lock->pmap);
-	XDestroyWindow(dpy, lock->win);
+    XUngrabPointer(dpy, CurrentTime);
+    XFreePixmap(dpy, lock->pmap);
+    XDestroyWindow(dpy, lock->win);
 
-	free(lock);
+    free(lock);
 }
 
 Lock *
 lockscreen(Display *dpy, int screen)
 {
-	char curs[] = {0, 0, 0, 0, 0, 0, 0, 0};
-	unsigned int len;
-	Lock *lock;
-	XColor black, dummy;
-	XSetWindowAttributes wa;
-	Cursor invisible;
+    char curs[] = {0, 0, 0, 0, 0, 0, 0, 0};
+    unsigned int len;
+    Lock *lock;
+    XColor black, dummy;
+    XSetWindowAttributes wa;
+    Cursor invisible;
 
-	if(dpy == NULL || screen < 0)
-		return NULL;
+    if (dpy == NULL || screen < 0)
+        return NULL;
 
-	lock = malloc(sizeof(Lock));
-	if(lock == NULL)
-		return NULL;
+    lock = malloc(sizeof(Lock));
+    if (lock == NULL)
+        return NULL;
 
-	lock->screen = screen;
+    lock->screen = screen;
 
-	lock->root = RootWindow(dpy, lock->screen);
+    lock->root = RootWindow(dpy, lock->screen);
 
-	/* init */
-	wa.override_redirect = 1;
-	wa.background_pixel = BlackPixel(dpy, lock->screen);
-	lock->win = XCreateWindow(dpy, lock->root, 0, 0, DisplayWidth(dpy, lock->screen), DisplayHeight(dpy, lock->screen),
-			0, DefaultDepth(dpy, lock->screen), CopyFromParent,
-			DefaultVisual(dpy, lock->screen), CWOverrideRedirect | CWBackPixel, &wa);
-	XAllocNamedColor(dpy, DefaultColormap(dpy, lock->screen), "black", &black, &dummy);
-	lock->pmap = XCreateBitmapFromData(dpy, lock->win, curs, 8, 8);
-	invisible = XCreatePixmapCursor(dpy, lock->pmap, lock->pmap, &black, &black, 0, 0);
-	XDefineCursor(dpy, lock->win, invisible);
-	XMapRaised(dpy, lock->win);
-	for(len = 1000; len; len--) {
-		if(XGrabPointer(dpy, lock->root, False, ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
-			GrabModeAsync, GrabModeAsync, None, invisible, CurrentTime) == GrabSuccess)
-			break;
-		usleep(1000);
-	}
-	if(running && (len > 0)) {
-		for(len = 1000; len; len--) {
-			if(XGrabKeyboard(dpy, lock->root, True, GrabModeAsync, GrabModeAsync, CurrentTime)
-				== GrabSuccess)
-				break;
-			usleep(1000);
-		}
-		running = (len > 0);
-	}
+    /* init */
+    wa.override_redirect = 1;
+    wa.background_pixel = BlackPixel(dpy, lock->screen);
+    lock->win = XCreateWindow(dpy, lock->root, 0, 0, DisplayWidth(dpy, lock->screen), DisplayHeight(dpy, lock->screen),
+        0, DefaultDepth(dpy, lock->screen), CopyFromParent,
+        DefaultVisual(dpy, lock->screen), CWOverrideRedirect | CWBackPixel, &wa);
+    XAllocNamedColor(dpy, DefaultColormap(dpy, lock->screen), "black", &black, &dummy);
+    lock->pmap = XCreateBitmapFromData(dpy, lock->win, curs, 8, 8);
+    invisible = XCreatePixmapCursor(dpy, lock->pmap, lock->pmap, &black, &black, 0, 0);
+    XDefineCursor(dpy, lock->win, invisible);
+    XMapRaised(dpy, lock->win);
+    for (len = 1000; len; len--) {
+        if (XGrabPointer(dpy, lock->root, False, ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+            GrabModeAsync, GrabModeAsync, None, invisible, CurrentTime) == GrabSuccess)
+            break;
+        usleep(1000);
+    }
+    if (running && (len > 0)) {
+        for (len = 1000; len; len--) {
+            if (XGrabKeyboard(dpy, lock->root, True, GrabModeAsync, GrabModeAsync, CurrentTime)
+                == GrabSuccess)
+                break;
+            usleep(1000);
+        }
+        running = (len > 0);
+    }
 
-	if(!running) {
-		unlockscreen(dpy, lock);
-		lock = NULL;
-	}
-	else 
-		XSelectInput(dpy, lock->root, SubstructureNotifyMask);
+    if (!running) {
+        unlockscreen(dpy, lock);
+        lock = NULL;
+    } else {
+        XSelectInput(dpy, lock->root, SubstructureNotifyMask);
+    }
 
-	return lock;
+    return lock;
 }
 
 int
@@ -369,8 +369,10 @@ main(void)
         check_version(dev_id);
         add_to_white_list(dev_id);
         handle = connect_to_device(dev_id);
-        sleep(1);
         /* encryption(dev_id, handle); */
+
+        /* Sleep one second */
+        sleep(1);
 
         /* Get the number of screens in display "dpy" and blank them all. */
         nscreens = ScreenCount(dpy);
@@ -378,16 +380,6 @@ main(void)
         if (locks == NULL)
             die("ble: malloc: %s", strerror(errno));
 
-        /* while(running) { */
-        /*     sleep(1); */
-        /*     rssi = read_rssi(dev_id, handle); */
-        /*     printf("\t%d\t%f\n", rssi, calculate_distance(rssi)); */
-        /*     if ((calculate_distance(rssi) >= 2.1) && (rssi <= -71 && rssi >= -75)) { */
-        /*     #<{(| if (rssi <= -71 && rssi >= -75) { |)}># */
-        /*         printf("%d\t%f\n", rssi, calculate_distance(rssi)); */
-        /*         sleep(1); */
-        /*     }       */
-        /* } */
         while(running) {
             rssi = read_rssi(dev_id, handle);
             sleep(2);
@@ -401,9 +393,6 @@ main(void)
                 running = False;
             }
         }
-
-        printf("SLEEP\n");
-        sleep(10);
 
         while(! running) {
             rssi = read_rssi(dev_id, handle);
