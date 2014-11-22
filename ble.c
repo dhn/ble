@@ -66,13 +66,13 @@ typedef struct {
 static void die(const char*, ...);
 static void unlockscreen(Display*, Lock*);
 static Lock *lockscreen(Display*, int);
-static void add_to_white_list(int dev_id);
-static uint16_t connect_to_device(int dev_id);
-static void disconnect_from_device(int dev_id, uint16_t handle);
-static void encryption(int dev_id, uint16_t handle);
-static void check_version(int dev_id);
-static int read_rssi(int dev_id, uint16_t handle);
-static double calculate_distance(int rssi);
+static void add_to_white_list(int);
+static uint16_t connect_to_device(int);
+static void disconnect_from_device(int, uint16_t);
+static void encryption(int, uint16_t);
+static void check_version(int);
+static int read_rssi(int, uint16_t);
+static double calculate_distance(int);
 
 /* variables */
 static Lock **locks;
@@ -269,7 +269,8 @@ calculate_distance(int rssi)
 }
 
 void
-die(const char *errstr, ...) {
+die(const char *errstr, ...)
+{
 	va_list ap;
 
 	va_start(ap, errstr);
@@ -279,7 +280,8 @@ die(const char *errstr, ...) {
 }
 
 void
-unlockscreen(Display *dpy, Lock *lock) {
+unlockscreen(Display *dpy, Lock *lock)
+{
 	if(dpy == NULL || lock == NULL)
 		return;
 
@@ -291,7 +293,8 @@ unlockscreen(Display *dpy, Lock *lock) {
 }
 
 Lock *
-lockscreen(Display *dpy, int screen) {
+lockscreen(Display *dpy, int screen)
+{
 	char curs[] = {0, 0, 0, 0, 0, 0, 0, 0};
 	unsigned int len;
 	Lock *lock;
