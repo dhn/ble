@@ -24,7 +24,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: ble.c,v 1.8 2014/11/23 00:28:08 dhn Exp $
+ * $Id: ble.c,v 1.9 2014/11/23 00:40:45 dhn Exp $
 */
 #define _XOPEN_SOURCE 500
 
@@ -281,7 +281,7 @@ die(const char *errstr, ...)
 void
 unlockscreen(Display *dpy, Lock *lock)
 {
-    if(dpy == NULL || lock == NULL)
+    if (dpy == NULL || lock == NULL)
         return;
 
     XUngrabPointer(dpy, CurrentTime);
