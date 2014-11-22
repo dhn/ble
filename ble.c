@@ -24,14 +24,24 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: ble.c,v 1.6 2014/11/14 00:20:44 dhn Exp $
+ * $Id: ble.c,v 1.7 2014/11/23 00:21:29 dhn Exp $
+ *
 */
+#define _XOPEN_SOURCE 500
+
 #include <math.h>
 #include <errno.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <sys/socket.h>
+
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
@@ -46,7 +56,16 @@ typedef struct {
     int err;
 } hci_typ;
 
+typedef struct {
+    int screen;
+    Window root, win;
+    Pixmap pmap;
+} Lock;
+
 /* function declarations */
+static void die(const char*, ...);
+static void unlockscreen(Display*, Lock*);
+static Lock *lockscreen(Display*, int);
 static void add_to_white_list(int dev_id);
 static uint16_t connect_to_device(int dev_id);
 static void disconnect_from_device(int dev_id, uint16_t handle);
@@ -56,6 +75,9 @@ static int read_rssi(int dev_id, uint16_t handle);
 static double calculate_distance(int rssi);
 
 /* variables */
+static Lock **locks;
+static int nscreens;
+static Bool running = True;
 static hci_typ typ;
 static bdaddr_t bdaddr;
 static uint8_t bdaddr_type = LE_PUBLIC_ADDRESS;
@@ -241,35 +263,163 @@ calculate_distance(int rssi)
          *        value1 = 0.89976, value2 = 7.7095, value3 = 0.111
          *        value1 = 0.42093, value2 = 6.9476, value3 = 0.34992
         */
-        /* return (0.42093)*pow(ratio, 6.9476) + 0.54992; */
-        return (0.22093)*pow(ratio, 6.9476) + 0.2344;
+        return (0.42093)*pow(ratio, 6.9476) + 0.54992;
+        /* return (0.22093)*pow(ratio, 6.9476) + 0.2344; */
     }
+}
+
+void
+die(const char *errstr, ...) {
+	va_list ap;
+
+	va_start(ap, errstr);
+	vfprintf(stderr, errstr, ap);
+	va_end(ap);
+	exit(EXIT_FAILURE);
+}
+
+void
+unlockscreen(Display *dpy, Lock *lock) {
+	if(dpy == NULL || lock == NULL)
+		return;
+
+	XUngrabPointer(dpy, CurrentTime);
+	XFreePixmap(dpy, lock->pmap);
+	XDestroyWindow(dpy, lock->win);
+
+	free(lock);
+}
+
+Lock *
+lockscreen(Display *dpy, int screen) {
+	char curs[] = {0, 0, 0, 0, 0, 0, 0, 0};
+	unsigned int len;
+	Lock *lock;
+	XColor black, dummy;
+	XSetWindowAttributes wa;
+	Cursor invisible;
+
+	if(dpy == NULL || screen < 0)
+		return NULL;
+
+	lock = malloc(sizeof(Lock));
+	if(lock == NULL)
+		return NULL;
+
+	lock->screen = screen;
+
+	lock->root = RootWindow(dpy, lock->screen);
+
+	/* init */
+	wa.override_redirect = 1;
+	wa.background_pixel = BlackPixel(dpy, lock->screen);
+	lock->win = XCreateWindow(dpy, lock->root, 0, 0, DisplayWidth(dpy, lock->screen), DisplayHeight(dpy, lock->screen),
+			0, DefaultDepth(dpy, lock->screen), CopyFromParent,
+			DefaultVisual(dpy, lock->screen), CWOverrideRedirect | CWBackPixel, &wa);
+	XAllocNamedColor(dpy, DefaultColormap(dpy, lock->screen), "black", &black, &dummy);
+	lock->pmap = XCreateBitmapFromData(dpy, lock->win, curs, 8, 8);
+	invisible = XCreatePixmapCursor(dpy, lock->pmap, lock->pmap, &black, &black, 0, 0);
+	XDefineCursor(dpy, lock->win, invisible);
+	XMapRaised(dpy, lock->win);
+	for(len = 1000; len; len--) {
+		if(XGrabPointer(dpy, lock->root, False, ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+			GrabModeAsync, GrabModeAsync, None, invisible, CurrentTime) == GrabSuccess)
+			break;
+		usleep(1000);
+	}
+	if(running && (len > 0)) {
+		for(len = 1000; len; len--) {
+			if(XGrabKeyboard(dpy, lock->root, True, GrabModeAsync, GrabModeAsync, CurrentTime)
+				== GrabSuccess)
+				break;
+			usleep(1000);
+		}
+		running = (len > 0);
+	}
+
+	if(!running) {
+		unlockscreen(dpy, lock);
+		lock = NULL;
+	}
+	else 
+		XSelectInput(dpy, lock->root, SubstructureNotifyMask);
+
+	return lock;
 }
 
 int
 main(void)
 {
-    int rssi, dev_id = -1;
+    Display *dpy;
+    int screen, rssi, dev_id = -1;
     uint16_t handle;
+    
+    running = True;
 
     dev_id = hci_devid(DEV_ID);
     if (dev_id < 0) {
         perror("Invalid device");
         exit(1);
     } else {
+        if (!(dpy = XOpenDisplay(0)))
+            die("ble: cannot open display");
+
         check_version(dev_id);
         add_to_white_list(dev_id);
         handle = connect_to_device(dev_id);
+        sleep(1);
         /* encryption(dev_id, handle); */
 
-        /* DEBUG */
-        for(int i=0; i<5; i++) {
-            sleep(1);
+        /* Get the number of screens in display "dpy" and blank them all. */
+        nscreens = ScreenCount(dpy);
+        locks = malloc(sizeof(Lock *) * nscreens);
+        if (locks == NULL)
+            die("ble: malloc: %s", strerror(errno));
+
+        /* while(running) { */
+        /*     sleep(1); */
+        /*     rssi = read_rssi(dev_id, handle); */
+        /*     printf("\t%d\t%f\n", rssi, calculate_distance(rssi)); */
+        /*     if ((calculate_distance(rssi) >= 2.1) && (rssi <= -71 && rssi >= -75)) { */
+        /*     #<{(| if (rssi <= -71 && rssi >= -75) { |)}># */
+        /*         printf("%d\t%f\n", rssi, calculate_distance(rssi)); */
+        /*         sleep(1); */
+        /*     }       */
+        /* } */
+        while(running) {
             rssi = read_rssi(dev_id, handle);
-            printf("%d\t%f\n", rssi, calculate_distance(rssi));
+            sleep(2);
+            if ((calculate_distance(rssi) >= 2.0) && (rssi <= -71 && rssi >= -75)) {
+                if (locks != NULL) {
+                    nscreens = ScreenCount(dpy);
+                    for (screen = 0; screen < nscreens; screen++)
+                        locks[screen] = lockscreen(dpy, screen);
+                    XSync(dpy, False);
+                }
+                running = False;
+            }
         }
 
+        printf("SLEEP\n");
+        sleep(10);
+
+        while(! running) {
+            rssi = read_rssi(dev_id, handle);
+            if ((calculate_distance(rssi) <= 2.0) && (rssi <= -30 && rssi >= -70)) {
+                if (locks != NULL) {
+                    /* Distance ok, unlock everything and quit. */
+                    for (screen = 0; screen < nscreens; screen++)
+                        unlockscreen(dpy, locks[screen]);
+                }
+                running = True;
+            }
+        }
         disconnect_from_device(dev_id, handle);
+
+        if (locks != NULL)
+            free(locks);
+        XCloseDisplay(dpy);
     }
+
     return EXIT_SUCCESS;
 }
