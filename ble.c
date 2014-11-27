@@ -24,7 +24,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: ble.c,v 1.9 2014/11/23 00:40:45 dhn Exp $
+ * $Id: ble.c,v 2.0 2014/11/27 21:22:36 dhn Exp $
 */
 #define _XOPEN_SOURCE 500
 
@@ -35,7 +35,9 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <signal.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -72,8 +74,12 @@ static void encryption(int, uint16_t);
 static void check_version(int);
 static int read_rssi(int, uint16_t);
 static double calculate_distance(int);
+static void sighandler(int);
+static void initsignals();
 
 /* variables */
+static int dev_id = -1;
+static uint16_t handle;
 static Lock **locks;
 static int nscreens;
 static Bool running = True;
@@ -82,15 +88,25 @@ static bdaddr_t bdaddr;
 static uint8_t bdaddr_type = LE_PUBLIC_ADDRESS;
 
 void
+die(const char *errstr, ...)
+{
+    va_list ap;
+
+    va_start(ap, errstr);
+    vfprintf(stderr, errstr, ap);
+    va_end(ap);
+    exit(EXIT_FAILURE);
+}
+
+void
 add_to_white_list(int dev_id)
 {
     if (dev_id < 0)
         dev_id = hci_get_route(NULL);
 
-    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
-        perror("Could not open device");
-        exit(1);
-    }
+    if ((typ.dd = hci_open_dev(dev_id)) < 0)
+        die("Could not open device\n");
+
 
     if (BDADDR)
         str2ba(BDADDR, &bdaddr);
@@ -100,8 +116,7 @@ add_to_white_list(int dev_id)
 
     if (typ.err < 0) {
         typ.err = -errno;
-        printf("Can't add to white list!\n");
-        exit(1);
+        die("Can't add to white list!\n");
     }
 }
 
@@ -117,10 +132,8 @@ connect_to_device(int dev_id)
     if (dev_id < 0)
         dev_id = hci_get_route(NULL);
 
-    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
-        perror("Could not open device");
-        exit(1);
-    }
+    if ((typ.dd = hci_open_dev(dev_id)) < 0)
+        die("Could not open device\n");
 
     memset(&bdaddr, 0, sizeof(bdaddr_t));
     if (BDADDR)
@@ -141,10 +154,8 @@ connect_to_device(int dev_id)
             max_interval, latency, supervision_timeout,
             min_ce_length, max_ce_length, &handle, 25000);
 
-    if (typ.err < 0) {
-        perror("Could not create connection");
-        exit(1);
-    }
+    if (typ.err < 0)
+        die("Could not create connection\n");
 
     hci_close_dev(typ.dd);
 
@@ -157,16 +168,12 @@ disconnect_from_device(int dev_id, uint16_t handle)
     if (dev_id < 0)
         dev_id = hci_get_route(NULL);
 
-    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
-        perror("Could not open device");
-        exit(1);
-    }
+    if ((typ.dd = hci_open_dev(dev_id)) < 0)
+        die("Could not open device\n");
 
     typ.err = hci_disconnect(typ.dd, handle, HCI_OE_USER_ENDED_CONNECTION, 10000);
-    if (typ.err < 0) {
-        perror("Could not disconnect");
-        exit(1);
-    }
+    if (typ.err < 0)
+        die("Could not disconnect\n");
 
     hci_close_dev(typ.dd);
 }
@@ -177,15 +184,11 @@ encryption(int dev_id, uint16_t handle)
     if (BDADDR)
         str2ba(BDADDR, &bdaddr);
     
-    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
-        perror("Could not open device");
-        exit(1);
-    }
+    if ((typ.dd = hci_open_dev(dev_id)) < 0)
+        die("Could not open device\n");
 
-    if (hci_encrypt_link(typ.dd, handle, 1, 25000) < 0) {
-        perror("HCI set encryption request failed");
-        exit(1);
-    }
+    if (hci_encrypt_link(typ.dd, handle, 1, 25000) < 0)
+        die("HCI set encryption request failed\n");
 
     hci_close_dev(typ.dd);
 }
@@ -196,15 +199,11 @@ check_version(int dev_id)
     struct hci_version ver;
     char *lmpver;
 
-    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
-        perror("Could not open device");
-        exit(1);
-    }
+    if ((typ.dd = hci_open_dev(dev_id)) < 0)
+        die("Could not open device\n");
 
-    if (hci_read_local_version(typ.dd, &ver, 1000) < 0) {
-        perror("Can't read version info hci0");
-        exit(1);
-    }
+    if (hci_read_local_version(typ.dd, &ver, 1000) < 0)
+        die("Can't read version info hci0\n");
 
     lmpver = lmp_vertostr(ver.lmp_ver);
 
@@ -227,15 +226,11 @@ read_rssi(int dev_id, uint16_t handle)
     if (BDADDR)
         str2ba(BDADDR, &bdaddr);
 
-    if ((typ.dd = hci_open_dev(dev_id)) < 0) {
-        perror("Could not open device");
-        exit(1);
-    }
+    if ((typ.dd = hci_open_dev(dev_id)) < 0)
+        die("Could not open device\n");
 
-    if (hci_read_rssi(typ.dd, handle, &rssi, 1000) < 0) {
-        perror("Read RSSI failed");
-        exit(1);
-    }
+    if (hci_read_rssi(typ.dd, handle, &rssi, 1000) < 0)
+        die("Read RSSI failed\n");
 
     hci_close_dev(typ.dd);
     
@@ -268,14 +263,38 @@ calculate_distance(int rssi)
 }
 
 void
-die(const char *errstr, ...)
+sighandler(int sig)
 {
-    va_list ap;
+    switch(sig) {
+        case SIGCHLD:
+            while(waitpid(-1, NULL, WNOHANG) > 0);
+            break;
+        case SIGHUP:
+        case SIGINT:
+        case SIGQUIT:
+        case SIGABRT:
+        case SIGTERM:
+        case SIGKILL:
+            disconnect_from_device(dev_id, handle);
+            exit(EXIT_SUCCESS);
+            break;
+        default:
+            break;
+    }
+}
 
-    va_start(ap, errstr);
-    vfprintf(stderr, errstr, ap);
-    va_end(ap);
-    exit(EXIT_FAILURE);
+void
+initsignals(void)
+{
+    signal(SIGCHLD, sighandler);
+    signal(SIGHUP, sighandler);
+    signal(SIGINT, sighandler);
+    signal(SIGQUIT, sighandler);
+    signal(SIGABRT, sighandler);
+    signal(SIGTERM, sighandler);
+    signal(SIGKILL, sighandler);
+
+    signal(SIGPIPE, SIG_IGN);
 }
 
 void
@@ -294,8 +313,8 @@ unlockscreen(Display *dpy, Lock *lock)
 Lock *
 lockscreen(Display *dpy, int screen)
 {
+    /* Thanks suckless - slock */
     char curs[] = {0, 0, 0, 0, 0, 0, 0, 0};
-    unsigned int len;
     Lock *lock;
     XColor black, dummy;
     XSetWindowAttributes wa;
@@ -323,28 +342,6 @@ lockscreen(Display *dpy, int screen)
     invisible = XCreatePixmapCursor(dpy, lock->pmap, lock->pmap, &black, &black, 0, 0);
     XDefineCursor(dpy, lock->win, invisible);
     XMapRaised(dpy, lock->win);
-    for (len = 1000; len; len--) {
-        if (XGrabPointer(dpy, lock->root, False, ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
-            GrabModeAsync, GrabModeAsync, None, invisible, CurrentTime) == GrabSuccess)
-            break;
-        usleep(1000);
-    }
-    if (running && (len > 0)) {
-        for (len = 1000; len; len--) {
-            if (XGrabKeyboard(dpy, lock->root, True, GrabModeAsync, GrabModeAsync, CurrentTime)
-                == GrabSuccess)
-                break;
-            usleep(1000);
-        }
-        running = (len > 0);
-    }
-
-    if (!running) {
-        unlockscreen(dpy, lock);
-        lock = NULL;
-    } else {
-        XSelectInput(dpy, lock->root, SubstructureNotifyMask);
-    }
 
     return lock;
 }
@@ -352,64 +349,72 @@ lockscreen(Display *dpy, int screen)
 int
 main(void)
 {
-    Display *dpy;
-    int screen, rssi, dev_id = -1;
-    uint16_t handle;
-    
-    running = True;
+    switch(fork()) {
+        case -1:
+            die("fork\n");
+            break;
+        case 0:
+            dev_id = hci_devid(DEV_ID);
+            if (dev_id < 0) {
+                perror("Invalid device");
+                exit(1);
+            } else {
+                initsignals();
+                close(STDIN_FILENO);
+                close(STDOUT_FILENO);
+                close(STDERR_FILENO);
 
-    dev_id = hci_devid(DEV_ID);
-    if (dev_id < 0) {
-        perror("Invalid device");
-        exit(1);
-    } else {
-        if (!(dpy = XOpenDisplay(0)))
-            die("ble: cannot open display");
+                Display *dpy = NULL;
+                int rssi, screen;
+                Bool help = True;
 
-        check_version(dev_id);
-        add_to_white_list(dev_id);
-        handle = connect_to_device(dev_id);
-        /* encryption(dev_id, handle); */
+                check_version(dev_id);
+                add_to_white_list(dev_id);
+                handle = connect_to_device(dev_id);
+                /* encryption(dev_id, handle); */
 
-        /* Sleep one second */
-        sleep(1);
+                while (running) {
+                    if (help) {
+                        if (!(dpy = XOpenDisplay(0)))
+                            die("ble: cannot open display");
 
-        /* Get the number of screens in display "dpy" and blank them all. */
-        nscreens = ScreenCount(dpy);
-        locks = malloc(sizeof(Lock *) * nscreens);
-        if (locks == NULL)
-            die("ble: malloc: %s", strerror(errno));
+                        /* Get the number of screens in display "dpy" and blank them all. */
+                        nscreens = ScreenCount(dpy);
+                        locks = malloc(sizeof(Lock *) * nscreens);
+                        if (locks == NULL)
+                            die("ble: malloc: %s", strerror(errno));
+                    }
 
-        while(running) {
-            rssi = read_rssi(dev_id, handle);
-            sleep(2);
-            if ((calculate_distance(rssi) >= 2.0) && (rssi <= -71 && rssi >= -75)) {
-                if (locks != NULL) {
-                    nscreens = ScreenCount(dpy);
-                    for (screen = 0; screen < nscreens; screen++)
-                        locks[screen] = lockscreen(dpy, screen);
-                    XSync(dpy, False);
+                    if (help) {
+                        rssi = read_rssi(dev_id, handle);
+                        if ((calculate_distance(rssi) >= 2.0) && (rssi <= -71 && rssi >= -75)) {
+                            if (locks != NULL && help) {
+                                for (screen = 0; screen < nscreens; screen++)
+                                    locks[screen] = lockscreen(dpy, screen);
+                                XSync(dpy, False);
+                            }
+                            help = False;
+                        }
+                    }
+                    sleep(1);
+                    if (!help) {
+                        rssi = read_rssi(dev_id, handle);
+                        if ((calculate_distance(rssi) <= 2.0) && (rssi <= -30 && rssi >= -70)) {
+                            for (screen = 0; screen < nscreens; screen++)
+                                unlockscreen(dpy, locks[screen]);
+
+                            if (locks != NULL || dpy != NULL) {
+                                free(locks);
+                                XCloseDisplay(dpy);
+                                help = True;
+                            }
+                        }
+                    }
                 }
-                running = False;
+                disconnect_from_device(dev_id, handle);
             }
-        }
-
-        while(! running) {
-            rssi = read_rssi(dev_id, handle);
-            if ((calculate_distance(rssi) <= 2.0) && (rssi <= -30 && rssi >= -70)) {
-                if (locks != NULL) {
-                    /* Distance ok, unlock everything and quit. */
-                    for (screen = 0; screen < nscreens; screen++)
-                        unlockscreen(dpy, locks[screen]);
-                }
-                running = True;
-            }
-        }
-        disconnect_from_device(dev_id, handle);
-
-        if (locks != NULL)
-            free(locks);
-        XCloseDisplay(dpy);
+        default:
+            break;
     }
 
     return EXIT_SUCCESS;
