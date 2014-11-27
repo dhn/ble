@@ -350,71 +350,70 @@ int
 main(void)
 {
     switch(fork()) {
-        case -1:
-            die("fork\n");
-            break;
-        case 0:
-            dev_id = hci_devid(DEV_ID);
-            if (dev_id < 0) {
-                perror("Invalid device");
-                exit(1);
-            } else {
-                initsignals();
-                close(STDIN_FILENO);
-                close(STDOUT_FILENO);
-                close(STDERR_FILENO);
+    case -1:
+        die("fork\n");
+        break;
+    case 0:
+        dev_id = hci_devid(DEV_ID);
+        if (dev_id < 0) {
+            die("Invalid device\n");
+        } else {
+            initsignals();
+            close(STDIN_FILENO);
+            close(STDOUT_FILENO);
+            close(STDERR_FILENO);
 
-                Display *dpy = NULL;
-                int rssi, screen;
-                Bool help = True;
+            Display *dpy = NULL;
+            int rssi, screen;
+            Bool help = True;
 
-                check_version(dev_id);
-                add_to_white_list(dev_id);
-                handle = connect_to_device(dev_id);
-                /* encryption(dev_id, handle); */
+            check_version(dev_id);
+            add_to_white_list(dev_id);
+            handle = connect_to_device(dev_id);
+            /* encryption(dev_id, handle); */
 
-                while (running) {
-                    if (help) {
-                        if (!(dpy = XOpenDisplay(0)))
-                            die("ble: cannot open display");
+            while (running) {
+                if (help) {
+                    if (!(dpy = XOpenDisplay(0)))
+                        die("ble: cannot open display");
 
-                        /* Get the number of screens in display "dpy" and blank them all. */
-                        nscreens = ScreenCount(dpy);
-                        locks = malloc(sizeof(Lock *) * nscreens);
-                        if (locks == NULL)
-                            die("ble: malloc: %s", strerror(errno));
-                    }
+                    /* Get the number of screens in display "dpy" and blank them all. */
+                    nscreens = ScreenCount(dpy);
+                    locks = malloc(sizeof(Lock *) * nscreens);
+                    if (locks == NULL)
+                        die("ble: malloc: %s", strerror(errno));
+                }
 
-                    if (help) {
-                        rssi = read_rssi(dev_id, handle);
-                        if ((calculate_distance(rssi) >= 2.0) && (rssi <= -71 && rssi >= -75)) {
-                            if (locks != NULL && help) {
-                                for (screen = 0; screen < nscreens; screen++)
-                                    locks[screen] = lockscreen(dpy, screen);
-                                XSync(dpy, False);
-                            }
-                            help = False;
-                        }
-                    }
-                    sleep(1);
-                    if (!help) {
-                        rssi = read_rssi(dev_id, handle);
-                        if ((calculate_distance(rssi) <= 2.0) && (rssi <= -30 && rssi >= -70)) {
+                if (help) {
+                    rssi = read_rssi(dev_id, handle);
+                    if ((calculate_distance(rssi) >= 2.0) && (rssi <= -71 && rssi >= -75)) {
+                        if (locks != NULL && help) {
                             for (screen = 0; screen < nscreens; screen++)
-                                unlockscreen(dpy, locks[screen]);
+                                locks[screen] = lockscreen(dpy, screen);
+                            XSync(dpy, False);
+                        }
+                        help = False;
+                    }
+                }
+                sleep(1);
+                if (!help) {
+                    rssi = read_rssi(dev_id, handle);
+                    if ((calculate_distance(rssi) <= 2.0) && (rssi <= -30 && rssi >= -70)) {
+                        for (screen = 0; screen < nscreens; screen++)
+                            unlockscreen(dpy, locks[screen]);
 
-                            if (locks != NULL || dpy != NULL) {
-                                free(locks);
-                                XCloseDisplay(dpy);
-                                help = True;
-                            }
+                        if (locks != NULL || dpy != NULL) {
+                            free(locks);
+                            XCloseDisplay(dpy);
+                            help = True;
                         }
                     }
                 }
-                disconnect_from_device(dev_id, handle);
             }
-        default:
-            break;
+            disconnect_from_device(dev_id, handle);
+        }
+    default:
+        break;
     }
 
     return EXIT_SUCCESS;
