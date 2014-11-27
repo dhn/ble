@@ -24,22 +24,22 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $Id: ble.c,v 2.0 2014/11/27 21:22:36 dhn Exp $
+ * $Id: ble.c,v 2.1 2014/11/27 21:39:44 dhn Exp $
 */
 #define _XOPEN_SOURCE 500
 
-#include <math.h>
-#include <errno.h>
 #include <ctype.h>
+#include <errno.h>
+#include <math.h>
+#include <signal.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <string.h>
-#include <signal.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -65,8 +65,6 @@ typedef struct {
 
 /* function declarations */
 static void die(const char*, ...);
-static void unlockscreen(Display*, Lock*);
-static Lock *lockscreen(Display*, int);
 static void add_to_white_list(int);
 static uint16_t connect_to_device(int);
 static void disconnect_from_device(int, uint16_t);
@@ -76,15 +74,17 @@ static int read_rssi(int, uint16_t);
 static double calculate_distance(int);
 static void sighandler(int);
 static void initsignals();
+static void unlockscreen(Display*, Lock*);
+static Lock *lockscreen(Display*, int);
 
 /* variables */
-static int dev_id = -1;
-static uint16_t handle;
-static Lock **locks;
-static int nscreens;
-static Bool running = True;
-static hci_typ typ;
 static bdaddr_t bdaddr;
+static Bool running = True;
+static hci_typ typ; 
+static int dev_id = -1;
+static int nscreens;
+static Lock **locks;
+static uint16_t handle;
 static uint8_t bdaddr_type = LE_PUBLIC_ADDRESS;
 
 void
